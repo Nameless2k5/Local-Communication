@@ -780,7 +780,7 @@ body {
 .message {
   display: flex;
   gap: var(--spacing-sm);
-  max-width: 70%;
+  max-width: 60%;
   animation: messageSlideIn 0.3s ease;
   margin-top: 4px;
 }
@@ -818,7 +818,8 @@ body {
 }
 
 .message-content {
-  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   margin-bottom: 4px;
 }
 
