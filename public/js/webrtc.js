@@ -380,24 +380,31 @@ export class CallManager {
         }
 
         this.peerConnection.ontrack = (event) => {
+            this.logDebug(`🎥 ontrack bắn! Loại: ${event.track.kind}, streams=${event.streams.length}`);
+
             // Ưu tiên lấy MediaStream nguyên gốc nếu có
             if (event.streams && event.streams[0]) {
                 this.remoteVideo.srcObject = event.streams[0];
                 this.remoteStream = event.streams[0];
+                this.logDebug(`✅ srcObject đã gán xong. Tracks: ${event.streams[0].getTracks().length}`);
             } else {
                 if (!this.remoteStream) {
                     this.remoteStream = new MediaStream();
                     this.remoteVideo.srcObject = this.remoteStream;
                 }
                 this.remoteStream.addTrack(event.track);
+                this.logDebug(`✅ Thêm track vào MediaStream. Loại: ${event.track.kind}`);
             }
 
-            // Ép trình duyệt (đặc biệt Safari/Chrome Mobile) phải Play ngay lập tức
+            // Ép trình duyệt (Safari/Chrome Mobile) phải Play ngay lập tức
             this.remoteVideo.onloadedmetadata = () => {
-                this.remoteVideo.play().catch(e => console.error("Lỗi Autoplay:", e));
+                this.logDebug(`👁️ loadedmetadata bắn - đang gọi play()...`);
+                this.remoteVideo.play()
+                    .then(() => this.logDebug('✅ Video play() thành công!'))
+                    .catch(e => this.logDebug('❌ LỖI Autoplay: ' + e.message));
             };
 
-            // Ẩn chữ Chờ bắt máy khi có tín hiệu Track trả về
+            // Ẩn chữ Chờ bắt máy
             if (this.callWaitingText) {
                 this.callWaitingText.classList.add('hidden');
             }
@@ -408,7 +415,7 @@ export class CallManager {
                 this.connectionTimeout = null;
             }
 
-            // Bắt đầu đếm thời gian chung cho cả Audio và Video
+            // Bắt đầu đếm thời gian
             this.startCallTimer();
         };
 
@@ -426,7 +433,7 @@ export class CallManager {
         };
 
         this.peerConnection.onconnectionstatechange = () => {
-            console.log('Trạng thái kết nối WebRTC:', this.peerConnection.connectionState);
+            this.logDebug('Connection State: ' + this.peerConnection.connectionState);
             if (this.peerConnection.connectionState === 'disconnected' ||
                 this.peerConnection.connectionState === 'failed' ||
                 this.peerConnection.connectionState === 'closed') {
@@ -435,9 +442,9 @@ export class CallManager {
         };
 
         this.peerConnection.oniceconnectionstatechange = () => {
-            console.log("Trạng thái ICE:", this.peerConnection.iceConnectionState);
+            this.logDebug("ICE Connection State: " + this.peerConnection.iceConnectionState);
             if (this.peerConnection.iceConnectionState === 'failed') {
-                alert("🔴 Lỗi WebRTC (NAT/Firewall): \nTab Ẩn Danh của trình duyệt đã chặn rò rỉ IP Local. \n\n⚠️ Nếu 2 máy đang dùng chung 1 mạng Wifi, Router của bạn có thể đang chặn kết nối vòng lặp (Hairpinning).\n\n👉 Cách sửa: 1 máy hãy đổi sang dùng mạng 4G, HOẶC dùng Tab thường (không ẩn danh).");
+                alert("🔴 Lỗi WebRTC ICE Failed.\nHãy thử dùng Tab thường thay vì Tab Ẩn Danh.");
                 this.endCall(false);
             }
         };
