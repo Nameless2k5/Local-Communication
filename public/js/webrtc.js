@@ -9,6 +9,7 @@ export class CallManager {
         this.callTargetId = null;
         this.isVideoCall = false;
         this.currentFacingMode = 'user';
+        this.iceCandidateQueue = [];
 
         this.configuration = {
             iceServers: [
@@ -348,6 +349,7 @@ export class CallManager {
 
     createPeerConnection() {
         this.peerConnection = new RTCPeerConnection(this.configuration);
+        this.iceCandidateQueue = [];
 
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
@@ -396,6 +398,8 @@ export class CallManager {
         this.createPeerConnection();
         try {
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            await this.processIceCandidateQueue();
+
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
 
@@ -415,6 +419,7 @@ export class CallManager {
         try {
             if (this.peerConnection) {
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                await this.processIceCandidateQueue();
             }
         } catch (error) {
             console.error('Lỗi xử lý Answer:', error);
@@ -423,11 +428,28 @@ export class CallManager {
 
     async handleIceCandidate(data) {
         try {
+            const candidate = new RTCIceCandidate(data.candidate);
             if (this.peerConnection) {
-                await this.peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                if (this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
+                    await this.peerConnection.addIceCandidate(candidate);
+                } else {
+                    this.iceCandidateQueue.push(candidate);
+                }
             }
         } catch (error) {
             console.error('Lỗi tiếp nhận ICE candidate:', error);
+        }
+    }
+
+    async processIceCandidateQueue() {
+        if (!this.peerConnection || !this.peerConnection.remoteDescription) return;
+        while (this.iceCandidateQueue.length > 0) {
+            const candidate = this.iceCandidateQueue.shift();
+            try {
+                await this.peerConnection.addIceCandidate(candidate);
+            } catch (error) {
+                console.error('Lỗi thêm Candidate từ hàng đợi:', error);
+            }
         }
     }
 
@@ -528,6 +550,7 @@ export class CallManager {
             this.peerConnection.close();
             this.peerConnection = null;
         }
+        this.iceCandidateQueue = [];
         this.isCaller = false;
         this.callTargetId = null;
         this.localVideo.srcObject = null;
