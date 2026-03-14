@@ -8,6 +8,7 @@ export class CallManager {
         this.isCaller = false;
         this.callTargetId = null;
         this.isVideoCall = false;
+        this.currentFacingMode = 'user';
 
         this.configuration = {
             iceServers: [
@@ -58,6 +59,7 @@ export class CallManager {
 
         this.toggleMicBtn = document.getElementById('toggle-mic-btn');
         this.toggleVideoBtn = document.getElementById('toggle-video-btn');
+        this.switchCameraBtn = document.getElementById('switch-camera-btn');
         this.endCallBtn = document.getElementById('end-call-btn');
 
         // Draggable Feature Variables
@@ -91,6 +93,7 @@ export class CallManager {
 
         this.toggleMicBtn?.addEventListener('click', () => this.toggleMic());
         this.toggleVideoBtn?.addEventListener('click', () => this.toggleVideo());
+        this.switchCameraBtn?.addEventListener('click', () => this.switchCamera());
     }
 
     setupSocketListeners() {
@@ -295,7 +298,7 @@ export class CallManager {
     async initLocalStream() {
         const constraints = {
             audio: true,
-            video: this.isVideoCall ? true : false
+            video: this.isVideoCall ? { facingMode: this.currentFacingMode } : false
         };
         this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
         this.localVideo.srcObject = this.localStream;
@@ -319,9 +322,11 @@ export class CallManager {
         this.toggleMicBtn.classList.remove('muted');
         if (!this.isVideoCall) {
             this.toggleVideoBtn.classList.add('hidden');
+            this.switchCameraBtn?.classList.add('hidden');
         } else {
             this.toggleVideoBtn.classList.remove('hidden');
             this.toggleVideoBtn.classList.remove('video-off');
+            this.switchCameraBtn?.classList.remove('hidden');
         }
     }
 
@@ -440,6 +445,59 @@ export class CallManager {
         }
     }
 
+    async switchCamera() {
+        if (!this.isVideoCall || !this.localStream) return;
+
+        // Vô hiệu hóa nút tạm thời để tránh click liên tục
+        if (this.switchCameraBtn) this.switchCameraBtn.disabled = true;
+
+        // Đảo ngược chế độ camera
+        this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+
+        try {
+            // Yêu cầu luồng video mới với camera đích
+            const constraints = {
+                audio: false,
+                video: { facingMode: this.currentFacingMode }
+            };
+
+            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const newVideoTrack = newStream.getVideoTracks()[0];
+
+            // Lấy video track cũ
+            const oldVideoTrack = this.localStream.getVideoTracks()[0];
+
+            // Thay thế track trong WebRTC PeerConnection (để phía kia thấy camera mới)
+            if (this.peerConnection) {
+                const sender = this.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(newVideoTrack);
+                }
+            }
+
+            // Thay thế track trong luồng hiển thị cục bộ (chính mình xem)
+            this.localStream.removeTrack(oldVideoTrack);
+            this.localStream.addTrack(newVideoTrack);
+
+            // Cập nhật thẻ video
+            this.localVideo.srcObject = this.localStream;
+
+            // Tắt stream của camera cũ để giải phóng tài nguyên
+            oldVideoTrack.stop();
+
+            // Giữ nguyên trạng thái tắt/mở video hiện tại
+            newVideoTrack.enabled = oldVideoTrack.enabled;
+
+        } catch (error) {
+            console.error('Lỗi khi chuyển camera:', error);
+            // Revert state
+            this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+            alert('Không thể chuyển đổi camera lúc này.');
+        } finally {
+            if (this.switchCameraBtn) this.switchCameraBtn.disabled = false;
+        }
+    }
+
     cleanupCall() {
         this.hideInCallUI();
         if (this.localStream) {
@@ -468,6 +526,8 @@ export class CallManager {
         this.toggleMicBtn.classList.remove('muted');
         this.toggleVideoBtn.classList.remove('video-off');
         this.toggleVideoBtn.classList.remove('hidden');
+        this.switchCameraBtn?.classList.add('hidden');
+        this.currentFacingMode = 'user';
 
         this.stopCallTimer();
     }
