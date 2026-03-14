@@ -8,8 +8,6 @@ export class CallManager {
         this.isCaller = false;
         this.callTargetId = null;
         this.isVideoCall = false;
-        this.callTargetId = null;
-        this.isVideoCall = false;
         this.currentFacingMode = 'user';
         this.iceCandidateQueue = [];
         this.connectionTimeout = null;
@@ -368,7 +366,7 @@ export class CallManager {
 
     createPeerConnection() {
         this.peerConnection = new RTCPeerConnection(this.configuration);
-        this.iceCandidateQueue = [];
+        // TRỌNG YẾU: Không được reset this.iceCandidateQueue = [] ở đây, tránh làm mất các candidate đến siêu sớm!
 
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
@@ -477,12 +475,11 @@ export class CallManager {
             if (!data.candidate || !data.candidate.candidate) return; // Bỏ qua Candidate rỗng (Safari bug)
 
             const candidate = new RTCIceCandidate(data.candidate);
-            if (this.peerConnection) {
-                if (this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
-                    await this.peerConnection.addIceCandidate(candidate);
-                } else {
-                    this.iceCandidateQueue.push(candidate);
-                }
+            if (this.peerConnection && this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
+                await this.peerConnection.addIceCandidate(candidate);
+            } else {
+                // Hàng đợi cho Early ICE Candidates hoặc khi đang đàm phán Description, KỂ CẢ KHI PeerConnection chưa tạo
+                this.iceCandidateQueue.push(candidate);
             }
         } catch (error) {
             console.error('Lỗi tiếp nhận ICE candidate:', error);
