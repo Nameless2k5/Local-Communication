@@ -150,7 +150,7 @@ io.on('connection', async (socket) => {
                                     recipientName: receiver.username,
                                     senderName: socket.username,
                                     messageContent: content,
-                                    chatUrl: `http://localhost:3000`
+                                    chatUrl: process.env.APP_URL || 'https://shittimchest.blog'
                                 });
                                 console.log(`📧 Email notification sent to ${receiver.username}`);
                             }

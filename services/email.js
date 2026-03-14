@@ -134,7 +134,7 @@ class EmailService {
                 recipientName: 'Test User',
                 senderName: 'System',
                 messageContent: 'This is a test email from Local Communication. If you receive this, email service is working correctly!',
-                chatUrl: 'http://localhost:3000'
+                chatUrl: process.env.APP_URL || 'https://shittimchest.blog'
             });
             return result;
         } catch (error) {
