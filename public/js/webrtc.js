@@ -11,6 +11,8 @@ export class CallManager {
         this.currentFacingMode = 'user';
         this.iceCandidateQueue = [];
         this.connectionTimeout = null;
+        this.debugContainer = null;
+        this.initDebugUI();
 
         this.configuration = {
             iceServers: [
@@ -295,11 +297,14 @@ export class CallManager {
     }
 
     async handleCallAccepted(data) {
+        this.logDebug("✅ Bên kia đã bấm Chấp nhận cuộc gọi!");
         this.setConnectionTimeout(); // Cả 2 bên bắt đầu tính timeout từ lúc này (bắt tay)
         this.createPeerConnection();
         try {
+            this.logDebug("⚙️ Đang tạo Offer...");
             const offer = await this.peerConnection.createOffer();
             await this.peerConnection.setLocalDescription(offer);
+            this.logDebug("📤 Gửi Offer qua socket!");
             this.socket.emit('webrtc_offer', {
                 to: this.callTargetId,
                 offer: offer
@@ -407,6 +412,10 @@ export class CallManager {
             this.startCallTimer();
         };
 
+        this.peerConnection.onicegatheringstatechange = () => {
+            this.logDebug('ICE Gather State: ' + this.peerConnection.iceGatheringState);
+        };
+
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate && this.socket) {
                 this.socket.emit('webrtc_ice_candidate', {
@@ -441,11 +450,16 @@ export class CallManager {
 
         this.createPeerConnection();
         try {
+            this.logDebug("⚙️ Đang xử lý Remote Description từ Offer...");
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            this.logDebug("✅ Đã set Remote Description.");
+            this.logDebug(`📦 Hàng đợi ICE sớm: ${this.iceCandidateQueue.length} gói tin.`);
             await this.processIceCandidateQueue();
 
+            this.logDebug("⚙️ Đang tạo Answer...");
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
+            this.logDebug("📤 Đã tạo và gửi Answer!");
 
             if (this.socket) {
                 this.socket.emit('webrtc_answer', {
@@ -462,7 +476,10 @@ export class CallManager {
     async handleAnswer(data) {
         try {
             if (this.peerConnection) {
+                this.logDebug("📩 Nhận Answer từ Callee.");
                 await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                this.logDebug("✅ Đã set Remote Description (Answer).");
+                this.logDebug(`📦 Hàng đợi ICE sớm: ${this.iceCandidateQueue.length} gói tin.`);
                 await this.processIceCandidateQueue();
             }
         } catch (error) {
@@ -477,11 +494,14 @@ export class CallManager {
             const candidate = new RTCIceCandidate(data.candidate);
             if (this.peerConnection && this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
                 await this.peerConnection.addIceCandidate(candidate);
+                this.logDebug("❄️ Gắn ICE Candidate ngay lập tức.");
             } else {
                 // Hàng đợi cho Early ICE Candidates hoặc khi đang đàm phán Description, KỂ CẢ KHI PeerConnection chưa tạo
                 this.iceCandidateQueue.push(candidate);
+                this.logDebug(`🕒 Đưa ICE Candidate vào Hàng Đợi (Tổng: ${this.iceCandidateQueue.length}).`);
             }
         } catch (error) {
+            this.logDebug('❌ LỖI ICE Candidate: ' + error.message);
             console.error('Lỗi tiếp nhận ICE candidate:', error);
         }
     }
@@ -622,6 +642,24 @@ export class CallManager {
     }
 
     // --- Timer Logic ---
+    initDebugUI() {
+        this.debugContainer = document.createElement('div');
+        this.debugContainer.id = 'webrtc-debug';
+        this.debugContainer.style.cssText = 'position:fixed;bottom:10px;left:10px;width:300px;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.7);color:#0f0;font-size:10px;z-index:99999;padding:10px;border-radius:5px;pointer-events:none;font-family:monospace;';
+        document.body.appendChild(this.debugContainer);
+    }
+
+    logDebug(message) {
+        console.log(message);
+        if (this.debugContainer) {
+            const p = document.createElement('p');
+            p.style.margin = '2px 0';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            this.debugContainer.appendChild(p);
+            this.debugContainer.scrollTop = this.debugContainer.scrollHeight;
+        }
+    }
+
     setConnectionTimeout() {
         if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
         this.connectionTimeout = setTimeout(() => {
