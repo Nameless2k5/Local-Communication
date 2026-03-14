@@ -426,6 +426,14 @@ export class CallManager {
                 this.endCall(false);
             }
         };
+
+        this.peerConnection.oniceconnectionstatechange = () => {
+            console.log("Trạng thái ICE:", this.peerConnection.iceConnectionState);
+            if (this.peerConnection.iceConnectionState === 'failed') {
+                alert("🔴 Lỗi WebRTC (NAT/Firewall): \nTab Ẩn Danh của trình duyệt đã chặn rò rỉ IP Local. \n\n⚠️ Nếu 2 máy đang dùng chung 1 mạng Wifi, Router của bạn có thể đang chặn kết nối vòng lặp (Hairpinning).\n\n👉 Cách sửa: 1 máy hãy đổi sang dùng mạng 4G, HOẶC dùng Tab thường (không ẩn danh).");
+                this.endCall(false);
+            }
+        };
     }
 
     async handleOffer(data) {
@@ -466,6 +474,8 @@ export class CallManager {
 
     async handleIceCandidate(data) {
         try {
+            if (!data.candidate || !data.candidate.candidate) return; // Bỏ qua Candidate rỗng (Safari bug)
+
             const candidate = new RTCIceCandidate(data.candidate);
             if (this.peerConnection) {
                 if (this.peerConnection.remoteDescription && this.peerConnection.remoteDescription.type) {
