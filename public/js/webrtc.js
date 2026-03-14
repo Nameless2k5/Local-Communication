@@ -325,6 +325,11 @@ export class CallManager {
         this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
         this.localVideo.srcObject = this.localStream;
 
+        // Hỗ trợ Autoplay cho Mobile
+        this.localVideo.onloadedmetadata = () => {
+            this.localVideo.play().catch(e => console.error("Lỗi Autoplay Local Video:", e));
+        };
+
         if (!this.isVideoCall) {
             this.localVideo.classList.add('hidden');
             this.remoteVideo.style.display = 'none';
@@ -363,11 +368,22 @@ export class CallManager {
         }
 
         this.peerConnection.ontrack = (event) => {
-            if (!this.remoteStream) {
-                this.remoteStream = new MediaStream();
-                this.remoteVideo.srcObject = this.remoteStream;
+            // Ưu tiên lấy MediaStream nguyên gốc nếu có
+            if (event.streams && event.streams[0]) {
+                this.remoteVideo.srcObject = event.streams[0];
+                this.remoteStream = event.streams[0];
+            } else {
+                if (!this.remoteStream) {
+                    this.remoteStream = new MediaStream();
+                    this.remoteVideo.srcObject = this.remoteStream;
+                }
+                this.remoteStream.addTrack(event.track);
             }
-            this.remoteStream.addTrack(event.track);
+
+            // Ép trình duyệt (đặc biệt Safari/Chrome Mobile) phải Play ngay lập tức
+            this.remoteVideo.onloadedmetadata = () => {
+                this.remoteVideo.play().catch(e => console.error("Lỗi Autoplay:", e));
+            };
 
             // Ẩn chữ Chờ bắt máy khi có tín hiệu Track trả về
             if (this.callWaitingText) {
