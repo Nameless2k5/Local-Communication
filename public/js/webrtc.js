@@ -8,8 +8,11 @@ export class CallManager {
         this.isCaller = false;
         this.callTargetId = null;
         this.isVideoCall = false;
+        this.callTargetId = null;
+        this.isVideoCall = false;
         this.currentFacingMode = 'user';
         this.iceCandidateQueue = [];
+        this.connectionTimeout = null;
 
         this.configuration = {
             iceServers: [
@@ -182,6 +185,8 @@ export class CallManager {
             await this.initLocalStream();
             this.showInCallUI();
 
+            this.setConnectionTimeout(); // Bắt đầu đếm ngược timeout 20s
+
             let avatar = (this.app.profileManager && this.app.profileManager.currentAvatarUrl) || (this.app.currentUser && this.app.currentUser.avatar_url);
 
             this.socket.emit('request_call', {
@@ -315,7 +320,7 @@ export class CallManager {
     async initLocalStream() {
         const constraints = {
             audio: true,
-            video: this.isVideoCall ? { facingMode: this.currentFacingMode } : false
+            video: this.isVideoCall ? { facingMode: { ideal: this.currentFacingMode } } : false
         };
         this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
         this.localVideo.srcObject = this.localStream;
@@ -369,6 +374,12 @@ export class CallManager {
                 this.callWaitingText.classList.add('hidden');
             }
 
+            // Hủy timeout nếu tín hiệu đã trả về thành công
+            if (this.connectionTimeout) {
+                clearTimeout(this.connectionTimeout);
+                this.connectionTimeout = null;
+            }
+
             // Bắt đầu đếm thời gian chung cho cả Audio và Video
             this.startCallTimer();
         };
@@ -394,6 +405,8 @@ export class CallManager {
 
     async handleOffer(data) {
         if (this.isCaller) return;
+
+        this.setConnectionTimeout(); // Bắt đầu đếm ngược timeout 20s chờ thiết lập P2P
 
         this.createPeerConnection();
         try {
@@ -496,7 +509,7 @@ export class CallManager {
             // Yêu cầu luồng video mới với camera đích
             const constraints = {
                 audio: false,
-                video: { facingMode: this.currentFacingMode }
+                video: { facingMode: { ideal: this.currentFacingMode } }
             };
 
             const newStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -568,10 +581,24 @@ export class CallManager {
         this.switchCameraBtn?.classList.add('hidden');
         this.currentFacingMode = 'user';
 
+        if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+        }
+
         this.stopCallTimer();
     }
 
     // --- Timer Logic ---
+    setConnectionTimeout() {
+        if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = setTimeout(() => {
+            if (this.peerConnection && this.peerConnection.connectionState !== 'connected') {
+                alert('⏳ Lỗi Timeout: Kết nối mạng quá yếu hoặc bị firewall chặn (Không thể tải Video).');
+                this.endCall(true);
+            }
+        }, 20000); // 20 seconds timeout
+    }
     startCallTimer() {
         this.callStartTime = new Date();
 
