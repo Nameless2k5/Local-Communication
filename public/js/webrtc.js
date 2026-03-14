@@ -18,21 +18,21 @@ export class CallManager {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
+                // TURN Server riêng (coturn) - thay YOUR_PUBLIC_IP bằng IP thật sau khi cài
                 {
-                    urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: 'turn:shittimchest.blog:3478',
+                    username: 'localcomm',
+                    credential: 'localcomm2025'
                 },
                 {
-                    urls: 'turn:openrelay.metered.ca:443',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: 'turn:shittimchest.blog:3478?transport=tcp',
+                    username: 'localcomm',
+                    credential: 'localcomm2025'
                 },
                 {
-                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: 'turns:shittimchest.blog:5349',
+                    username: 'localcomm',
+                    credential: 'localcomm2025'
                 }
             ]
         };
