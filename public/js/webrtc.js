@@ -183,9 +183,12 @@ export class CallManager {
 
         try {
             await this.initLocalStream();
-            this.showInCallUI();
 
-            this.setConnectionTimeout(); // Bắt đầu đếm ngược timeout 20s
+            // Ép Safari tải Media Context ngay khi người dùng bấm nút gọi/nghe
+            if (this.localVideo) this.localVideo.play().catch(e => console.error("Autoplay Bypass fail:", e));
+            if (this.remoteVideo) this.remoteVideo.play().catch(e => console.error("Autoplay Bypass fail:", e));
+
+            this.showInCallUI();
 
             let avatar = (this.app.profileManager && this.app.profileManager.currentAvatarUrl) || (this.app.currentUser && this.app.currentUser.avatar_url);
 
@@ -271,6 +274,11 @@ export class CallManager {
         this.incomingModal.classList.add('hidden');
         try {
             await this.initLocalStream();
+
+            // Ép Safari tải Media Context ngay khi người dùng bấm nút gọi/nghe
+            if (this.localVideo) this.localVideo.play().catch(e => console.error("Autoplay Bypass fail:", e));
+            if (this.remoteVideo) this.remoteVideo.play().catch(e => console.error("Autoplay Bypass fail:", e));
+
             this.showInCallUI();
             this.socket.emit('accept_call', { callerId: this.callTargetId });
         } catch (error) {
@@ -289,6 +297,7 @@ export class CallManager {
     }
 
     async handleCallAccepted(data) {
+        this.setConnectionTimeout(); // Cả 2 bên bắt đầu tính timeout từ lúc này (bắt tay)
         this.createPeerConnection();
         try {
             const offer = await this.peerConnection.createOffer();
