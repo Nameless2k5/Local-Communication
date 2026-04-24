@@ -25,6 +25,7 @@ const { getNicknames, setNickname } = require('./models/ConversationNickname');
 const createNicknameRoutes = require('./routes/nicknames');
 
 const app = express();
+app.set('trust proxy', 1); // Trust Nginx reverse proxy
 const server = http.createServer(app);
 
 // CORS allowlist — set APP_URL (comma-separated) in .env for multiple origins
@@ -47,9 +48,11 @@ const chatBackgroundModel = new ChatBackground();
 // Middleware
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. same-origin, mobile clients, server-to-server)
-        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error('Not allowed by CORS'));
+        // Allow requests with no origin (curl, mobile apps, same-origin Nginx proxy)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        // Reject unknown origins silently — no thrown error to avoid PM2 log spam
+        return callback(null, false);
     },
     credentials: true
 }));
