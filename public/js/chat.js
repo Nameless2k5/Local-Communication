@@ -55,7 +55,7 @@ class Chat {
 
     requestNotificationPermission() {
         if (!("Notification" in window)) {
-            console.log("Trình duyệt không hỗ trợ Desktop Notification");
+            return;
         } else if (Notification.permission !== "granted" && Notification.permission !== "denied") {
             Notification.requestPermission();
         }
@@ -92,13 +92,9 @@ class Chat {
             }
         });
 
-        this.socket.on('connect', () => {
-            console.log('✓ Connected to server');
-        });
+        this.socket.on('connect', () => {});
 
-        this.socket.on('disconnect', () => {
-            console.log('✗ Disconnected from server');
-        });
+        this.socket.on('disconnect', () => {});
 
         this.socket.on('users_online', (userIds) => {
             this.onlineUserIds = userIds;

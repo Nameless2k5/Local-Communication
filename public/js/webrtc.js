@@ -14,7 +14,6 @@ export class CallManager {
         this.iceRestartTimeout = null;
         this.hasAttemptedIceRestart = false;
         this.debugContainer = null;
-        this.initDebugUI();
 
         this.configuration = {
             iceServers: [
@@ -717,23 +716,7 @@ export class CallManager {
     }
 
     // --- Timer Logic ---
-    initDebugUI() {
-        this.debugContainer = document.createElement('div');
-        this.debugContainer.id = 'webrtc-debug';
-        this.debugContainer.style.cssText = 'position:fixed;bottom:10px;left:10px;width:300px;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.7);color:#0f0;font-size:10px;z-index:99999;padding:10px;border-radius:5px;pointer-events:none;font-family:monospace;';
-        document.body.appendChild(this.debugContainer);
-    }
-
-    logDebug(message) {
-        console.log(message);
-        if (this.debugContainer) {
-            const p = document.createElement('p');
-            p.style.margin = '2px 0';
-            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            this.debugContainer.appendChild(p);
-            this.debugContainer.scrollTop = this.debugContainer.scrollHeight;
-        }
-    }
+    logDebug(message) {}
 
     setConnectionTimeout() {
         if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
