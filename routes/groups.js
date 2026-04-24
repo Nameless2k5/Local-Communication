@@ -81,7 +81,14 @@ function createGroupRoutes(io, onlineUsers) {
     router.get('/:groupId/messages', authenticateToken, async (req, res) => {
         try {
             const groupId = req.params.groupId;
-            // Get messages (We should pass Message Model here or require it)
+
+            // IDOR check: verify the requester is a member of this group
+            const GroupSchema = require('../database/schemas/Group.schema');
+            const membership = await GroupSchema.findOne({ _id: groupId, members: req.user.id });
+            if (!membership) {
+                return res.status(403).json({ error: 'Không có quyền truy cập nhóm này' });
+            }
+
             const MessageModel = require('../models/Message');
             const msgModel = new MessageModel();
             const messages = await msgModel.getGroupMessages(groupId);

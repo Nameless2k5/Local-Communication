@@ -414,6 +414,46 @@
   </div>
 
   <!-- Modals -->
+  <!-- Contact Nickname Modal -->
+  <div id="contact-nickname-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>✏️ Biệt danh</h2>
+        <button class="modal-close" data-modal="contact-nickname-modal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 18px;">Đặt biệt danh cho mọi người trong cuộc trò chuyện này. Mọi thành viên đều thấy biệt danh.</p>
+
+        <!-- Partner nickname row -->
+        <div class="nickname-row" id="nickname-row-partner">
+          <div class="nickname-row-avatar" id="nickname-partner-avatar"></div>
+          <div class="nickname-row-info">
+            <div class="nickname-row-username" id="nickname-partner-name"></div>
+            <input type="text" class="nickname-input" id="nickname-partner-input" maxlength="50" placeholder="Thêm biệt danh" autocomplete="off">
+          </div>
+        </div>
+
+        <!-- Self nickname row -->
+        <div class="nickname-row" id="nickname-row-self">
+          <div class="nickname-row-avatar" id="nickname-self-avatar"></div>
+          <div class="nickname-row-info">
+            <div class="nickname-row-username" id="nickname-self-name"></div>
+            <input type="text" class="nickname-input" id="nickname-self-input" maxlength="50" placeholder="Thêm biệt danh" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="nickname-reset-btn">Đặt lại tất cả</button>
+        <button id="save-contact-nickname-btn" class="btn-primary">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-overlay"></div>
@@ -482,11 +522,6 @@
         <div class="form-group">
           <label for="profile-username">Username (không thể đổi)</label>
           <input type="text" id="profile-username" disabled>
-        </div>
-
-        <div class="form-group">
-          <label for="profile-nickname">Biệt danh</label>
-          <input type="text" id="profile-nickname" placeholder="Tên hiển thị của bạn" maxlength="50">
         </div>
 
         <div class="form-group">

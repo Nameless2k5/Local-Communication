@@ -150,8 +150,13 @@ class Message {
         const message = await this.Message.findById(messageId);
         if (!message) return null;
 
-        // Allow if participant in direct chat OR if it's a group message
-        if (!message.group_id) {
+        if (message.group_id) {
+            // For group messages: check that user is a member of the group
+            const GroupSchema = require('../database/schemas/Group.schema');
+            const membership = await GroupSchema.findOne({ _id: message.group_id, members: userId });
+            if (!membership) throw new Error('Unauthorized');
+        } else {
+            // For direct messages: check user is sender or receiver
             if (message.sender_id.toString() !== userId && message.receiver_id.toString() !== userId) {
                 throw new Error('Unauthorized');
             }
@@ -166,6 +171,28 @@ class Message {
     async forwardMessage(originalMessageId, senderId, targetGroups, targetUsers) {
         const originalMsg = await this.Message.findById(originalMessageId);
         if (!originalMsg) throw new Error('Original message not found');
+
+        const GroupSchema = require('../database/schemas/Group.schema');
+
+        // Authorization: verify sender has access to the original message
+        if (originalMsg.group_id) {
+            const membership = await GroupSchema.findOne({ _id: originalMsg.group_id, members: senderId });
+            if (!membership) throw new Error('Unauthorized: no access to original message');
+        } else if (originalMsg.receiver_id) {
+            const senderIdStr = senderId.toString();
+            if (originalMsg.sender_id.toString() !== senderIdStr &&
+                originalMsg.receiver_id.toString() !== senderIdStr) {
+                throw new Error('Unauthorized: no access to original message');
+            }
+        }
+
+        // Authorization: verify sender is a member of every target group
+        if (targetGroups && targetGroups.length > 0) {
+            for (const groupId of targetGroups) {
+                const membership = await GroupSchema.findOne({ _id: groupId, members: senderId });
+                if (!membership) throw new Error(`Unauthorized: not a member of group ${groupId}`);
+            }
+        }
 
         const forwardedMessages = [];
 
@@ -246,6 +273,18 @@ class Message {
         if (!message) {
             console.warn('[Model] Message not found');
             return null;
+        }
+
+        // Authorization check
+        if (message.group_id) {
+            const GroupSchema = require('../database/schemas/Group.schema');
+            const membership = await GroupSchema.findOne({ _id: message.group_id, members: userId });
+            if (!membership) throw new Error('Unauthorized');
+        } else {
+            if (message.sender_id.toString() !== userId.toString() &&
+                message.receiver_id.toString() !== userId.toString()) {
+                throw new Error('Unauthorized');
+            }
         }
 
         // Ensure reactions array exists

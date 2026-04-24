@@ -111,7 +111,7 @@ class App {
         sessionStorage.setItem('user', JSON.stringify(user));
 
         // Update UI with user info
-        document.getElementById('current-username').textContent = user.nickname || user.username;
+        document.getElementById('current-username').textContent = user.username;
         const avatar = document.getElementById('current-user-avatar');
 
         if (user.avatar_url) {

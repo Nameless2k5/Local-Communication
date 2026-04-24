@@ -30,14 +30,6 @@ const userSchema = new mongoose.Schema({
             default: true  // Send when offline
         }
     },
-    nickname: {
-        type: String,
-        trim: true,
-        maxlength: 50,
-        default: function () {
-            return this.username; // Default nickname is username
-        }
-    },
     avatar_url: {
         type: String,
         default: null

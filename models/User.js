@@ -68,7 +68,6 @@ class User {
             id: user._id.toString(),
             username: user.username,
             email: user.email,
-            nickname: user.nickname || user.username,
             avatar_url: user.avatar_url,
             bio: user.bio,
             email_notifications: user.email_notifications,
@@ -86,19 +85,17 @@ class User {
         return {
             id: user._id.toString(),
             username: user.username,
-            nickname: user.nickname || user.username,
             avatar_url: user.avatar_url,
             bio: user.bio,
-            email: user.email,
             created_at: user.createdAt
         };
     }
 
     /**
-     * Update user profile (nickname, bio)
+     * Update user profile (bio only)
      */
     async updateProfile(userId, updates) {
-        const allowedUpdates = ['nickname', 'bio'];
+        const allowedUpdates = ['bio'];
         const filteredUpdates = {};
 
         Object.keys(updates).forEach(key => {
@@ -118,7 +115,6 @@ class User {
         return {
             id: user._id.toString(),
             username: user.username,
-            nickname: user.nickname,
             avatar_url: user.avatar_url,
             bio: user.bio
         };
@@ -167,10 +163,8 @@ class User {
         return users.map(user => ({
             id: user._id.toString(),
             username: user.username,
-            nickname: user.nickname || user.username,
             avatar_url: user.avatar_url,
             bio: user.bio,
-            email: user.email,
             created_at: user.createdAt
         }));
     }

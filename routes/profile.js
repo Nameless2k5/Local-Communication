@@ -43,8 +43,8 @@ const upload = multer({
 function createProfileRoutes(userModel, io) {
     const router = express.Router();
 
-    // GET /api/profile/:userId - Get user profile (public)
-    router.get('/:userId', async (req, res) => {
+    // GET /api/profile/:userId - Get user profile (authenticated only)
+    router.get('/:userId', authenticateToken, async (req, res) => {
         try {
             const profile = await userModel.getProfile(req.params.userId);
 
@@ -62,10 +62,9 @@ function createProfileRoutes(userModel, io) {
     // PUT /api/profile - Update own profile
     router.put('/', authenticateToken, async (req, res) => {
         try {
-            const { nickname, bio } = req.body;
+            const { bio } = req.body;
 
             const updates = {};
-            if (nickname !== undefined) updates.nickname = nickname;
             if (bio !== undefined) updates.bio = bio;
 
             const updatedProfile = await userModel.updateProfile(req.userId, updates);

@@ -11,6 +11,8 @@ export class CallManager {
         this.currentFacingMode = 'user';
         this.iceCandidateQueue = [];
         this.connectionTimeout = null;
+        this.iceRestartTimeout = null;
+        this.hasAttemptedIceRestart = false;
         this.debugContainer = null;
         this.initDebugUI();
 
@@ -18,7 +20,26 @@ export class CallManager {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                // TURN Server riêng (coturn) - thay YOUR_PUBLIC_IP bằng IP thật sau khi cài
+                { urls: 'stun:openrelay.metered.ca:80' },
+                // ── TURN miễn phí (Open Relay by Metered.ca) ─────────────────────────
+                // Đây là TURN relay công cộng, hoạt động ngay, không cần cài thêm gì.
+                // Dùng để vượt qua CGNAT của 4G / Carrier NAT.
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turns:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                // ── TURN tự host (coturn) — cài theo hướng dẫn DEPLOYMENT_GUIDE ──────
                 {
                     urls: 'turn:shittimchest.blog:3478',
                     username: 'localcomm',
@@ -442,10 +463,36 @@ export class CallManager {
         };
 
         this.peerConnection.oniceconnectionstatechange = () => {
-            this.logDebug("ICE Connection State: " + this.peerConnection.iceConnectionState);
-            if (this.peerConnection.iceConnectionState === 'failed') {
-                alert("🔴 Lỗi WebRTC ICE Failed.\nHãy thử dùng Tab thường thay vì Tab Ẩn Danh.");
-                this.endCall(false);
+            const iceState = this.peerConnection.iceConnectionState;
+            this.logDebug("ICE Connection State: " + iceState);
+
+            if (iceState === 'disconnected') {
+                // Có thể tự hồi phục — chờ 4 giây rồi thử ICE Restart
+                this.iceRestartTimeout = setTimeout(async () => {
+                    if (!this.peerConnection || this.peerConnection.iceConnectionState !== 'disconnected') return;
+                    this.logDebug('⟳ ICE vẫn disconnected — thử ICE Restart...');
+                    await this.attemptIceRestart();
+                }, 4000);
+
+            } else if (iceState === 'failed') {
+                if (this.iceRestartTimeout) {
+                    clearTimeout(this.iceRestartTimeout);
+                    this.iceRestartTimeout = null;
+                }
+                if (!this.hasAttemptedIceRestart) {
+                    this.logDebug('⟳ ICE Failed — thử ICE Restart lần cuối...');
+                    this.attemptIceRestart();
+                } else {
+                    this.logDebug('🔴 ICE Failed hoàn toàn, kết thúc cuộc gọi.');
+                    this.endCall(false);
+                }
+
+            } else if (iceState === 'connected' || iceState === 'completed') {
+                if (this.iceRestartTimeout) {
+                    clearTimeout(this.iceRestartTimeout);
+                    this.iceRestartTimeout = null;
+                }
+                this.hasAttemptedIceRestart = false;
             }
         };
     }
@@ -510,6 +557,21 @@ export class CallManager {
         } catch (error) {
             this.logDebug('❌ LỖI ICE Candidate: ' + error.message);
             console.error('Lỗi tiếp nhận ICE candidate:', error);
+        }
+    }
+
+    // Chỉ caller có quyền khởi động ICE Restart (RFC 8445)
+    async attemptIceRestart() {
+        if (!this.peerConnection || !this.isCaller) return;
+        this.hasAttemptedIceRestart = true;
+        try {
+            const offer = await this.peerConnection.createOffer({ iceRestart: true });
+            await this.peerConnection.setLocalDescription(offer);
+            this.socket.emit('webrtc_offer', { to: this.callTargetId, offer });
+            this.logDebug('📤 Đã gửi ICE Restart Offer.');
+        } catch (e) {
+            this.logDebug('❌ ICE Restart thất bại: ' + e.message);
+            this.endCall(false);
         }
     }
 
@@ -644,6 +706,12 @@ export class CallManager {
             clearTimeout(this.connectionTimeout);
             this.connectionTimeout = null;
         }
+
+        if (this.iceRestartTimeout) {
+            clearTimeout(this.iceRestartTimeout);
+            this.iceRestartTimeout = null;
+        }
+        this.hasAttemptedIceRestart = false;
 
         this.stopCallTimer();
     }

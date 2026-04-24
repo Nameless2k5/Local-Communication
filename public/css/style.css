@@ -2640,3 +2640,87 @@ body {
   font-size: 0.8rem;
   border-radius: var(--radius-sm);
 }
+/* ===== System Messages (Nickname / Group Events) ===== */
+.message.system-message {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+  padding: 0 16px;
+  max-width: 100%;
+  width: 100%;
+}
+
+.system-message-text {
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  text-align: center;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  font-style: italic;
+  user-select: none;
+}
+
+/* ===== Nickname Modal Rows ===== */
+.nickname-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nickname-row:last-child {
+  border-bottom: none;
+}
+
+.nickname-row-avatar {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1rem;
+  color: white;
+  background-size: cover;
+  background-position: center;
+}
+
+.nickname-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nickname-row-username {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nickname-input {
+  width: 100%;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.nickname-input:focus {
+  border-color: var(--primary-color);
+}
+
+.nickname-input::placeholder {
+  color: var(--text-tertiary);
+}

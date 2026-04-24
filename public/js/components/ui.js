@@ -60,7 +60,7 @@ export function parseLinks(text) {
     });
 }
 
-export function renderUserList(user, isOnline, isActive) {
+export function renderUserList(user, isOnline, isActive, displayName) {
     const div = document.createElement('div');
     div.className = `user-item${isActive ? ' active' : ''}`;
 
@@ -79,7 +79,7 @@ export function renderUserList(user, isOnline, isActive) {
     info.className = 'user-item-info';
 
     const name = document.createElement('h4');
-    name.textContent = user.username;
+    name.textContent = displayName || user.username;
 
     const status = document.createElement('div');
     status.className = `status${isOnline ? ' online' : ' offline'}`;
@@ -129,6 +129,18 @@ export function renderGroupList(group, isActive) {
 }
 
 export function renderMessage(message, isSent, isGroupChat = false) {
+    // System message — centered notification, no bubble/actions
+    if (message.message_type === 'system') {
+        const div = document.createElement('div');
+        div.className = 'message system-message';
+        div.dataset.id = message.id || message._id;
+        const text = document.createElement('span');
+        text.className = 'system-message-text';
+        text.textContent = message.content;
+        div.appendChild(text);
+        return div;
+    }
+
     const div = document.createElement('div');
     div.className = `message${isSent ? ' sent' : ' received'}`;
 

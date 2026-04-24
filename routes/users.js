@@ -17,7 +17,7 @@ function createUserRoutes(userModel) {
     // Get user by ID
     router.get('/:id', authenticateToken, async (req, res) => {
         try {
-            const user = await userModel.findUserById(req.params.id);
+            const user = await userModel.getProfile(req.params.id);
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
             }

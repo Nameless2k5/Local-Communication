@@ -31,7 +31,7 @@ Mở **Console** của LXC trên Proxmox hoặc SSH trực tiếp vào IP của 
 Tiến hành cài đặt nhanh các package cần thiết:
 
 ```bash
-# 1. Cập nhật hệ thống và xoá bỏ bản node cũ gâu lỗi (nếu có)
+# 1. Cập nhật hệ thống và xoá bỏ bản node cũ gây lỗi (nếu có)
 apt update && apt upgrade -y
 apt-get purge -y nodejs npm
 apt-get autoremove -y
@@ -55,7 +55,7 @@ npm install -g pm2
 1. **Clone mã nguồn:**
    ```bash
    cd /var/www
-   git clone https://github.com/YourUsername/Local-Communication.git
+   git clone https://github.com/Nameless2k5/Local-Communication.git
    cd Local-Communication
    ```
    *(Thay link github trên bằng link project thực tế của bạn, hoặc dùng SFTP để ném file vào)*
@@ -90,17 +90,15 @@ Nginx sẽ đón người dùng truy cập vào cổng 80 & 443 (đã được P
    ```nginx
    server {
        listen 80;
-       server_name your-domain.com; # Đổi thành Domain hiện có của bạn
+       server_name shittimchest.blog;
 
        location / {
-           proxy_pass http://localhost:3000; # Port chạy local
+           proxy_pass http://localhost:3000;
            proxy_http_version 1.1;
            proxy_set_header Upgrade $http_upgrade;
            proxy_set_header Connection "upgrade";
            proxy_set_header Host $host;
            proxy_cache_bypass $http_upgrade;
-           
-           # Xử lý IP thật do client mang theo
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
        }
@@ -143,6 +141,97 @@ Bản chất LXC là container riêng của hệ điều hành, mà Docker bản
 ### Có nên xài Docker cho project Node.js WebRTC?
 * **Rất Khuyên Dùng Nếu:** Bạn quen dùng Docker. Nó giúp đóng gói code lại cực sạch, setup tự động nhanh bằng 1 lệnh `docker compose up -d`. Về sau có cấu hình Nginx Proxy Manager đi cùng để cấp tự động SSL cực tối ưu.
 * **Tạm Gác Lại Nếu:** Bạn chưa nắm rành Docker và cần tối ưu triệt để từng millisec ping cho cuộc gọi nội bộ (thông qua Node.js và hệ điều hành trực tiếp - Bare Metal logic). Việc chạy Nginx trực tiếp trên LXC (như hướng dẫn Step 1-5 ở trên) đem lại độ trễ mạng thấp nhất không thông qua thêm một bridge mạng phụ (`docker0`).
+
+---
+
+## Bước 6: Cài Đặt TURN Server (coturn) — Bắt Buộc Cho WiFi ↔ 4G
+
+> **Tại sao cần TURN?**  
+> Khi hai máy ở hai mạng khác nhau (WiFi + 4G), các mạng di động dùng CGNAT (Carrier-Grade NAT) khiến STUN không thể tìm được đường thẳng P2P. TURN server đóng vai trò **relay** — chuyển tiếp media qua server để vượt qua mọi loại NAT.
+
+### Cài đặt coturn
+
+```bash
+apt install -y coturn
+```
+
+### Bật coturn service
+
+```bash
+# Mở file cấu hình daemon
+nano /etc/default/coturn
+
+# Bỏ dấu # ở dòng:
+TURNSERVER_ENABLED=1
+```
+
+### Cấu hình coturn
+
+```bash
+nano /etc/turnserver.conf
+```
+
+Xóa nội dung cũ, dán vào khối sau (thay `YOUR_SERVER_IP` bằng IP Public của server):
+
+```conf
+listening-port=3478
+tls-listening-port=5349
+
+# IP Public của máy chủ
+external-ip=YOUR_SERVER_IP
+
+# Cho phép dùng relay
+relay-ip=YOUR_SERVER_IP
+
+# Thông tin xác thực khớp với webrtc.js
+user=localcomm:localcomm2025
+realm=shittimchest.blog
+
+# Đường dẫn SSL (dùng cert đã cài từ certbot bước 5)
+cert=/etc/letsencrypt/live/shittimchest.blog/fullchain.pem
+pkey=/etc/letsencrypt/live/shittimchest.blog/privkey.pem
+
+# Bảo mật
+no-multicast-peers
+no-cli
+fingerprint
+lt-cred-mech
+
+# Log
+log-file=/var/log/coturn/turnserver.log
+```
+
+### Mở port firewall
+
+```bash
+# UDP + TCP cho TURN
+ufw allow 3478/udp
+ufw allow 3478/tcp
+# TLS TURN
+ufw allow 5349/udp
+ufw allow 5349/tcp
+```
+
+Nếu dùng Proxmox + Port Forwarding qua Router, nhớ forward thêm 4 port trên từ WAN về IP LXC.
+
+### Khởi động coturn
+
+```bash
+systemctl enable coturn
+systemctl restart coturn
+
+# Kiểm tra trạng thái
+systemctl status coturn
+```
+
+### Kiểm tra TURN hoạt động
+
+Truy cập [webrtc.github.io/samples/src/content/peerconnection/trickle-ice/](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/), nhập:
+- TURN URI: `turn:shittimchest.blog:3478`
+- Username: `localcomm`
+- Password: `localcomm2025`
+
+Nhấn **Gather candidates** — nếu thấy candidate loại `relay` xuất hiện là TURN đang hoạt động.
 
 ---
 

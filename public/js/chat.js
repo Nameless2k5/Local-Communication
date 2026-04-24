@@ -1,6 +1,6 @@
 // Chat module - handles real-time messaging
 import { API_BASE_URL, SOCKET_URL } from './config.js';
-import { renderUserList, renderGroupList, renderMessage, getInitials, formatTime } from './components/ui.js';
+import { renderUserList, renderGroupList, renderMessage, getInitials, formatTime, escapeHTML } from './components/ui.js';
 
 class Chat {
     constructor(user, token, profileManager) {
@@ -16,6 +16,8 @@ class Chat {
         this.currentReplyTo = null;
         this.currentEditMessage = null;
         this.isActive = true;
+        this.conversationNicknames = {}; // { userId: nickname } for current open convo
+        this.allNicknames = {}; // { userId: nickname } across ALL conversations (for left panel)
 
         this.init();
 
@@ -28,6 +30,7 @@ class Chat {
         // Load users and groups
         await this.loadUsers();
         await this.loadGroups();
+        await this.loadAllNicknames();
 
         // Setup event listeners
         this.setupEventListeners();
@@ -41,6 +44,7 @@ class Chat {
 
     clearCurrentChatUI() {
         this.currentChatUser = null;
+        this.conversationNicknames = {};
         document.getElementById('chat-active').classList.add('hidden');
         document.getElementById('chat-empty').classList.remove('hidden');
         const sidebarRight = document.getElementById('chat-sidebar-right');
@@ -64,7 +68,7 @@ class Chat {
 
             const title = message.group_id
                 ? (message.group_name || 'Tin nhắn nhóm mới')
-                : (message.sender?.nickname || message.sender?.username || 'Tin nhắn mới');
+                : (message.sender?.username || 'Tin nhắn mới');
 
             const options = {
                 body: message.content,
@@ -201,8 +205,8 @@ class Chat {
 
             // Nếu người dùng đang MỞ cái Group đó trên màn hình thì tự refresh Name Avatar
             if (this.currentChatUser && this.currentChatUser.id === updatedGroup._id) {
+                this.currentChatUser.name = updatedGroup.name;
                 this.currentChatUser.username = updatedGroup.name;
-                this.currentChatUser.nickname = updatedGroup.name;
                 this.currentChatUser.avatar_url = updatedGroup.avatar_url;
 
                 // Re-render Main Chat Header
@@ -246,8 +250,8 @@ class Chat {
                 const chatUsername = document.getElementById('chat-username');
                 const chatAvatar = document.getElementById('chat-user-avatar');
 
-                if (updatedUser.nickname || updatedUser.username) {
-                    chatUsername.textContent = updatedUser.nickname || updatedUser.username;
+                if (updatedUser.username) {
+                    chatUsername.textContent = updatedUser.username;
                 }
 
                 if (updatedUser.avatar_url !== undefined) {
@@ -269,6 +273,49 @@ class Chat {
             if (this.currentChatUser && this.currentChatUser.id === data.partnerId) {
                 if (this.profileManager) {
                     this.profileManager.applyBackground(data.backgroundUrl);
+                }
+            }
+        });
+
+        this.socket.on('nickname_updated', (data) => {
+            const { user1, user2, nicknames, systemMessage } = data;
+            // Determine who the partner is for the current user
+            const myPartnerId = (user1 === this.user.id) ? user2 : user1;
+
+            // Update nickname map
+            const newNicknames = {};
+            nicknames.forEach(n => {
+                if (n.nickname) newNicknames[n.user_id] = n.nickname;
+            });
+
+            // Update global left-panel nickname for the partner
+            const partnerNickname = newNicknames[myPartnerId];
+            if (partnerNickname) {
+                this.allNicknames[myPartnerId] = partnerNickname;
+            } else {
+                delete this.allNicknames[myPartnerId];
+            }
+            this.renderUsers();
+
+            // If we're currently in this conversation, update UI
+            if (this.currentChatUser && this.currentChatUser.id === myPartnerId) {
+                this.conversationNicknames = newNicknames;
+
+                // Update chat header (partner's display name)
+                const displayName = this.getDisplayName(myPartnerId, this.currentChatUser.username);
+                const chatUsername = document.getElementById('chat-username');
+                if (chatUsername) chatUsername.textContent = displayName;
+
+                // Update right sidebar
+                const sidebarUsername = document.getElementById('sidebar-username');
+                if (sidebarUsername) sidebarUsername.textContent = displayName;
+
+                // Append system message to chat
+                if (systemMessage) {
+                    const container = document.getElementById('messages-container');
+                    const msgEl = renderMessage(systemMessage, false, false);
+                    container.appendChild(msgEl);
+                    this.scrollToBottom();
                 }
             }
         });
@@ -345,7 +392,8 @@ class Chat {
                 userList.appendChild(groupEl);
             } else {
                 const isOnline = this.onlineUserIds.includes(item.id);
-                const userEl = renderUserList(item, isOnline, this.currentChatUser?.id === item.id);
+                const displayName = this.allNicknames[item.id] || item.username;
+                const userEl = renderUserList(item, isOnline, this.currentChatUser?.id === item.id, displayName);
                 userEl.addEventListener('click', () => {
                     this.openChat({ ...item });
                 });
@@ -371,6 +419,11 @@ class Chat {
         if (this.currentChatUser) {
             this.updateSidebarStatus(this.currentChatUser);
         }
+    }
+
+    // Returns the display name for a userId using conversation nickname or fallback
+    getDisplayName(userId, fallback) {
+        return this.conversationNicknames[userId] || fallback;
     }
 
     updateSidebarStatus(user) {
@@ -399,7 +452,9 @@ class Chat {
         const chatUsername = document.getElementById('chat-username');
         const chatAvatar = document.getElementById('chat-user-avatar');
 
-        chatUsername.textContent = user.username;
+        chatUsername.textContent = user.isGroup
+            ? (user.name || user.username)
+            : this.getDisplayName(user.id, user.username);
 
         // Hide/Show WebRTC Call buttons depending on chat type (1-1 or Group)
         const callAudioBtn = document.getElementById('call-audio-btn');
@@ -434,6 +489,12 @@ class Chat {
         this.renderUsers();
 
         // Load conversation
+        if (!user.isGroup) {
+            await this.loadConversationNicknames(user.id);
+            // Refresh header with nickname after loading
+            const chatUsername = document.getElementById('chat-username');
+            if (chatUsername) chatUsername.textContent = this.getDisplayName(user.id, user.username);
+        }
         await this.loadConversation(user.id);
 
         // Focus message input
@@ -450,6 +511,38 @@ class Chat {
 
         // Hide mobile sidebar overlay if visible
         this.hideMobileSidebar();
+    }
+
+    async loadConversationNicknames(partnerId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/nicknames/${partnerId}`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.conversationNicknames = {};
+                data.nicknames.forEach(n => {
+                    if (n.nickname) this.conversationNicknames[n.user_id] = n.nickname;
+                });
+            }
+        } catch (e) {
+            console.error('Failed to load nicknames:', e);
+        }
+    }
+
+    async loadAllNicknames() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/nicknames`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.allNicknames = data.nicknames || {};
+                this.renderUsers();
+            }
+        } catch (e) {
+            console.error('Failed to load all nicknames:', e);
+        }
     }
 
     async loadConversation(userId) {
@@ -981,7 +1074,7 @@ class Chat {
                 if (!this.currentChatUser || !this.currentChatUser.isGroup) return;
 
                 // Pre-fill dữ liệu cũ
-                editGroupNameInput.value = this.currentChatUser.nickname || this.currentChatUser.username;
+                editGroupNameInput.value = this.currentChatUser.name || this.currentChatUser.username;
                 if (this.currentChatUser.avatar_url) {
                     editGroupAvatarPreview.style.backgroundImage = `url(${this.currentChatUser.avatar_url})`;
                     editGroupAvatarPreview.textContent = '';
@@ -1034,7 +1127,7 @@ class Chat {
                 try {
                     const groupId = this.currentChatUser.id;
                     // Gọi API update tên
-                    if (newName !== (this.currentChatUser.nickname || this.currentChatUser.username)) {
+                    if (newName !== (this.currentChatUser.name || this.currentChatUser.username)) {
                         await fetch(`${API_BASE_URL}/api/groups/${groupId}/info`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
@@ -1236,12 +1329,20 @@ class Chat {
         const indicator = document.getElementById('typing-indicator');
         if (!indicator) return;
 
-        const dotsHTML = '<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>';
+        const dotsSpan = document.createElement('span');
+        dotsSpan.className = 'typing-dots';
+        dotsSpan.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+        indicator.innerHTML = '';
         if (username) {
-            indicator.innerHTML = `<strong>${username}</strong> đang nhập ${dotsHTML}`;
+            const strong = document.createElement('strong');
+            strong.textContent = username; // Use textContent to prevent XSS
+            indicator.appendChild(strong);
+            indicator.append(' đang nhập ');
         } else {
-            indicator.innerHTML = `đang nhập ${dotsHTML}`;
+            indicator.append('đang nhập ');
         }
+        indicator.appendChild(dotsSpan);
         indicator.classList.remove('hidden');
     }
 
@@ -1350,12 +1451,12 @@ class Chat {
             // Allow actions if I am Admin/CoAdmin AND target is not Admin/CoAdmin AND target is not me
             const canAction = (amIAdmin || amICoAdmin) && !isAdmin && !isCoAdmin && !isMe;
 
-            let avatarHtml = member.avatar_url ? `<div class="avatar" style="background-image: url(${member.avatar_url}); background-size: cover"></div>` : `<div class="avatar">${getInitials(member.username)}</div>`;
+            let avatarHtml = member.avatar_url ? `<div class="avatar" style="background-image: url(${escapeHTML(member.avatar_url)}); background-size: cover"></div>` : `<div class="avatar">${getInitials(member.username)}</div>`;
 
             el.innerHTML = `
                 ${avatarHtml}
                 <div class="group-member-info">
-                    <span class="group-member-name">${member.username} ${isMe ? '(Bạn)' : ''}</span>
+                    <span class="group-member-name">${escapeHTML(member.username)} ${isMe ? '(Bạn)' : ''}</span>
                     <span class="member-role-badge ${roleClass}">${roleLabel}</span>
                 </div>
                 ${canAction ? `
@@ -1624,6 +1725,7 @@ class Chat {
 
         const response = await fetch('/api/upload', {
             method: 'POST',
+            headers: { 'Authorization': `Bearer ${this.token}` },
             body: formData
         });
 
@@ -1870,18 +1972,85 @@ class Chat {
 
         // Settings Actions
         document.getElementById('sidebar-edit-nickname')?.addEventListener('click', () => {
-            // Re-use profile modal but maybe limit fields? 
-            // For simplicity, just open profile modal for now or implement specific modal later.
-            // User requested "Edit Nickname". Let's use the profile modal but focus on nickname.
-            const profileModal = document.getElementById('profile-modal');
-            if (profileModal) {
-                profileModal.classList.remove('hidden');
-                // We are editing OUR nickname, not the partner's. 
-                // IF the requirement was to edit partner's nickname, we need a different flow.
-                // Assuming editing OWN nickname for now based on context "Edit Nickname".
-                // If "Set Nickname for Partner", that needs DB schema change (UserRelationship or similar).
-                // Let's assume editing OWN nickname.
+            if (!this.currentChatUser || this.currentChatUser.isGroup) return;
+
+            const modal = document.getElementById('contact-nickname-modal');
+            const partner = this.currentChatUser;
+
+            // --- Partner row ---
+            const partnerAvatar = document.getElementById('nickname-partner-avatar');
+            const partnerName = document.getElementById('nickname-partner-name');
+            const partnerInput = document.getElementById('nickname-partner-input');
+
+            partnerName.textContent = partner.username;
+            partnerInput.value = this.conversationNicknames[partner.id] || '';
+            if (partner.avatar_url) {
+                partnerAvatar.style.backgroundImage = `url(${partner.avatar_url})`;
+                partnerAvatar.style.backgroundSize = 'cover';
+                partnerAvatar.textContent = '';
+            } else {
+                partnerAvatar.style.backgroundImage = '';
+                partnerAvatar.textContent = getInitials(partner.username);
             }
+
+            // --- Self row ---
+            const selfAvatar = document.getElementById('nickname-self-avatar');
+            const selfName = document.getElementById('nickname-self-name');
+            const selfInput = document.getElementById('nickname-self-input');
+
+            selfName.textContent = this.user.username + ' (Bạn)';
+            selfInput.value = this.conversationNicknames[this.user.id] || '';
+            if (this.user.avatar_url) {
+                selfAvatar.style.backgroundImage = `url(${this.user.avatar_url})`;
+                selfAvatar.style.backgroundSize = 'cover';
+                selfAvatar.textContent = '';
+            } else {
+                selfAvatar.style.backgroundImage = '';
+                selfAvatar.textContent = getInitials(this.user.username);
+            }
+
+            modal.classList.remove('hidden');
+            partnerInput.focus();
+        });
+
+        // Save nickname button
+        document.getElementById('save-contact-nickname-btn')?.addEventListener('click', () => {
+            if (!this.currentChatUser) return;
+
+            const partnerInput = document.getElementById('nickname-partner-input');
+            const selfInput = document.getElementById('nickname-self-input');
+            const partner = this.currentChatUser;
+
+            const partnerNick = partnerInput.value.trim();
+            const selfNick = selfInput.value.trim();
+
+            // Current stored values
+            const prevPartnerNick = this.conversationNicknames[partner.id] || '';
+            const prevSelfNick = this.conversationNicknames[this.user.id] || '';
+
+            // Emit only changed ones
+            if (partnerNick !== prevPartnerNick) {
+                this.socket.emit('set_nickname', {
+                    partnerId: partner.id,
+                    targetUserId: partner.id,
+                    nickname: partnerNick
+                });
+            }
+            if (selfNick !== prevSelfNick) {
+                this.socket.emit('set_nickname', {
+                    partnerId: partner.id,
+                    targetUserId: this.user.id,
+                    nickname: selfNick
+                });
+            }
+
+            document.getElementById('contact-nickname-modal').classList.add('hidden');
+        });
+
+        // Reset all nicknames
+        document.getElementById('nickname-reset-btn')?.addEventListener('click', () => {
+            document.getElementById('nickname-partner-input').value = '';
+            document.getElementById('nickname-self-input').value = '';
         });
 
         document.getElementById('sidebar-change-background')?.addEventListener('click', () => {
@@ -1904,7 +2073,9 @@ class Chat {
             const avatar = document.getElementById('sidebar-avatar');
             const username = document.getElementById('sidebar-username');
 
-            username.textContent = this.currentChatUser.nickname || this.currentChatUser.username;
+            username.textContent = this.currentChatUser.isGroup
+                ? (this.currentChatUser.name || this.currentChatUser.username)
+                : this.getDisplayName(this.currentChatUser.id, this.currentChatUser.username);
             if (this.currentChatUser.avatar_url) {
                 avatar.style.backgroundImage = `url(${this.currentChatUser.avatar_url})`;
                 avatar.style.backgroundSize = 'cover';
@@ -1963,13 +2134,13 @@ class Chat {
             const dateStr = formatTime(msg.created_at || msg.timestamp || new Date());
 
             // Format content preview
-            let contentPreview = msg.content;
+            let contentPreview = escapeHTML(msg.content || '');
             if (msg.message_type === 'image') contentPreview = '📷 [Ảnh]';
             else if (msg.message_type === 'video') contentPreview = '🎥 [Video]';
-            else if (msg.message_type === 'file') contentPreview = `📄 ${msg.attachment?.filename || '[File]'}`;
+            else if (msg.message_type === 'file') contentPreview = `📄 ${escapeHTML(msg.attachment?.filename || '[File]')}`;
 
             el.innerHTML = `
-                <div class="pinned-message-content" title="${msg.content || ''}">${contentPreview}</div>
+                <div class="pinned-message-content" title="${escapeHTML(msg.content || '')}">${contentPreview}</div>
                 <div class="pinned-message-meta">
                     <span>${dateStr}</span>
                 </div>
@@ -2061,7 +2232,7 @@ class Chat {
             el.innerHTML = `
                 <div class="file-icon">📄</div>
                 <div class="file-info">
-                    <span class="file-name" title="${msg.attachment.filename}">${msg.attachment.filename}</span>
+                    <span class="file-name" title="${escapeHTML(msg.attachment.filename)}">${escapeHTML(msg.attachment.filename)}</span>
                     <span class="file-size">${(msg.attachment.file_size / 1024).toFixed(1)} KB</span>
                 </div>
             `;

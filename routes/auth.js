@@ -1,12 +1,29 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const { authenticateToken } = require('../middleware/auth');
+
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 phút
+    max: 10,
+    message: { error: 'Quá nhiều lần thử đăng nhập. Vui lòng thử lại sau 15 phút.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 giờ
+    max: 5,
+    message: { error: 'Quá nhiều yêu cầu đăng ký. Vui lòng thử lại sau 1 giờ.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 function createAuthRoutes(userModel) {
     const router = express.Router();
 
     // Register new user
-    router.post('/register', async (req, res) => {
+    router.post('/register', registerLimiter, async (req, res) => {
         const { username, email, password } = req.body;
 
         if (!username || !email || !password) {
@@ -38,7 +55,7 @@ function createAuthRoutes(userModel) {
     });
 
     // Login
-    router.post('/login', async (req, res) => {
+    router.post('/login', loginLimiter, async (req, res) => {
         const { username, password } = req.body;
 
         if (!username || !password) {

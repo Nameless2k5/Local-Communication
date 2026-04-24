@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 
@@ -20,12 +21,20 @@ const createChatBackgroundRoutes = require('./routes/chatBackgrounds');
 const createGroupRoutes = require('./routes/groups');
 const emailService = require('./services/email');
 const Group = require('./models/Group');
+const { getNicknames, setNickname } = require('./models/ConversationNickname');
+const createNicknameRoutes = require('./routes/nicknames');
 
 const app = express();
 const server = http.createServer(app);
+
+// CORS allowlist — set APP_URL (comma-separated) in .env for multiple origins
+const allowedOrigins = (process.env.APP_URL || 'http://localhost:3000')
+    .split(',')
+    .map(o => o.trim());
+
 const io = new Server(server, {
     cors: {
-        origin: '*',
+        origin: allowedOrigins,
         methods: ['GET', 'POST']
     }
 });
@@ -36,7 +45,14 @@ const messageModel = new Message();
 const chatBackgroundModel = new ChatBackground();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. same-origin, mobile clients, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads')); // Serve uploaded files
@@ -53,6 +69,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/settings', createSettingsRoutes(userModel));
 app.use('/api/profile', createProfileRoutes(userModel, io));
 app.use('/api/chat-backgrounds', createChatBackgroundRoutes(chatBackgroundModel, io, onlineUsers));
+app.use('/api/nicknames', createNicknameRoutes());
 
 // Serve main page
 app.get('/', (req, res) => {
@@ -105,7 +122,10 @@ io.on('connection', async (socket) => {
 
     // Handle sending messages
     socket.on('send_message', async (data) => {
-        const { receiverId, groupId, content, message_type = 'text', attachment = null, replyToId = null } = data;
+        const { receiverId, groupId, content, attachment = null, replyToId = null } = data;
+        // Allowlist message_type to prevent client-side injection of 'system' messages
+        const allowedMessageTypes = ['text', 'image', 'video', 'file', 'link'];
+        const message_type = allowedMessageTypes.includes(data.message_type) ? data.message_type : 'text';
 
         try {
             const isGroup = !!groupId;
@@ -452,6 +472,51 @@ io.on('connection', async (socket) => {
         const targetSocketId = onlineUsers.get(to);
         if (targetSocketId) {
             io.to(targetSocketId).emit('webrtc_ice_candidate', { from: socket.userId, candidate });
+        }
+    });
+
+    // Handle setting conversation nickname (Messenger-like)
+    socket.on('set_nickname', async (data) => {
+        const { partnerId, targetUserId, nickname } = data;
+        try {
+            // Validate targetUserId is one of the two participants (prevents IDOR)
+            if (targetUserId !== socket.userId && targetUserId !== partnerId) {
+                return socket.emit('error', { message: 'Invalid target user' });
+            }
+            // Save to DB
+            const updatedNicknames = await setNickname(socket.userId, partnerId, targetUserId, nickname);
+
+            // Get target user info for system message
+            const targetUser = await userModel.findUserById(targetUserId);
+            const targetDisplayName = targetUser ? targetUser.username : 'Người dùng';
+
+            const systemContent = nickname
+                ? `${socket.username} đã đặt biệt danh cho ${targetDisplayName} là "${nickname}"`
+                : `${socket.username} đã xóa biệt danh của ${targetDisplayName}`;
+
+            // Create system message in DB
+            const sysMessage = await messageModel.createMessage(
+                socket.userId, partnerId, systemContent, 'system'
+            );
+            const sysPayload = { ...sysMessage, sender_username: socket.username };
+
+            const updatePayload = {
+                user1: socket.userId,  // who triggered
+                user2: partnerId,      // the other person
+                nicknames: updatedNicknames,
+                systemMessage: sysPayload
+            };
+
+            // Emit to partner
+            const partnerSocketId = onlineUsers.get(partnerId);
+            if (partnerSocketId) {
+                io.to(partnerSocketId).emit('nickname_updated', updatePayload);
+            }
+            // Emit back to sender
+            socket.emit('nickname_updated', updatePayload);
+        } catch (error) {
+            console.error('Set nickname error:', error);
+            socket.emit('error', { message: 'Failed to set nickname' });
         }
     });
 

@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -46,7 +47,11 @@ const fileFilter = (req, file, cb) => {
         'application/zip', 'application/x-zip-compressed'
     ];
 
-    if (allowedMimes.includes(file.mimetype)) {
+    // Validate both MIME type AND file extension to prevent MIME-sniffing bypass
+    const allowedExts = /\.(jpeg|jpg|png|gif|webp|mp4|webm|mov|pdf|doc|docx|zip)$/i;
+    const ext = path.extname(file.originalname);
+
+    if (allowedMimes.includes(file.mimetype) && allowedExts.test(ext)) {
         cb(null, true);
     } else {
         cb(new Error('Invalid file type. Only images, videos, PDFs, and documents are allowed.'));
@@ -69,8 +74,8 @@ function getFileCategory(mimetype) {
     return 'file';
 }
 
-// POST /api/upload - Upload file
-router.post('/', upload.array('files', 10), async (req, res) => {
+// POST /api/upload - Upload file (requires authentication)
+router.post('/', authenticateToken, upload.array('files', 10), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });

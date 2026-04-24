@@ -228,7 +228,6 @@ class ProfileManager {
                 const profile = await response.json();
 
                 document.getElementById('profile-username').value = profile.username;
-                document.getElementById('profile-nickname').value = profile.nickname || '';
                 document.getElementById('profile-bio').value = profile.bio || '';
                 document.getElementById('profile-email').value = profile.email;
 
@@ -258,7 +257,6 @@ class ProfileManager {
 
     async saveProfile() {
         try {
-            const nickname = document.getElementById('profile-nickname').value.trim();
             const bio = document.getElementById('profile-bio').value.trim();
 
             const response = await fetch(`${API_BASE_URL}/api/profile`, {
@@ -267,18 +265,12 @@ class ProfileManager {
                     'Authorization': `Bearer ${this.token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ nickname, bio })
+                body: JSON.stringify({ bio })
             });
 
             if (response.ok) {
                 alert('✅ Hồ sơ đã được cập nhật!');
                 this.closeModal('profile-modal');
-
-                // Update displayed nickname
-                const nicknameDisplay = document.getElementById('current-username');
-                if (nicknameDisplay) {
-                    nicknameDisplay.textContent = nickname || this.currentUser.username;
-                }
             } else {
                 throw new Error('Failed to save profile');
             }
